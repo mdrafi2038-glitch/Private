@@ -64,6 +64,27 @@ jobs:
           test -n "$SCRIPT"
           python3 "$SCRIPT" "$PROJECT_DIR"
 
+      - name: Fix missing DevicePolicyHelper status aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+          HELPER="$PROJECT_DIR/app/src/main/java/com/example/manager/DevicePolicyHelper.kt"
+          test -f "$HELPER"
+          python3 - "$HELPER" <<'PY'
+          from pathlib import Path
+          import sys
+          p = Path(sys.argv[1])
+          s = p.read_text()
+          if "fun isDeviceAdminActive(): Boolean" not in s:
+              pos = s.rfind("}")
+              if pos < 0:
+                  raise SystemExit("DevicePolicyHelper class closing brace not found")
+              methods = '''\n\n    // Compatibility aliases used by diagnostics and telemetry callers.\n    fun isDeviceAdminActive(): Boolean = isAdminActive()\n\n    fun isDeviceOwner(): Boolean {\n        return try {\n            devicePolicyManager.isDeviceOwnerApp(context.packageName)\n        } catch (_: Exception) {\n            false\n        }\n    }\n'''
+              s = s[:pos] + methods + s[pos:]
+              p.write_text(s)
+          print("DevicePolicyHelper status aliases verified")
+          PY
+
       - name: Prepare debug signing key
         shell: bash
         run: |

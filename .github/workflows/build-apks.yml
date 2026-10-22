@@ -34,7 +34,7 @@ jobs:
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
           test -n "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Extract the exact uploaded archive and inner source ZIP
         shell: bash
@@ -95,10 +95,10 @@ jobs:
           test -n "$ADMIN_APK"
           cp "$CLIENT_APK" release-output/PersonalAgent-Client-debug.apk
           cp "$ADMIN_APK" release-output/PersonalAgent-Admin-debug.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release-output/PersonalAgent-Client-debug.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release-output/PersonalAgent-Admin-debug.apk
-          CLIENT_ID="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release-output/PersonalAgent-Client-debug.apk | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -1)"
-          ADMIN_ID="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release-output/PersonalAgent-Admin-debug.apk | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -1)"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose release-output/PersonalAgent-Client-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose release-output/PersonalAgent-Admin-debug.apk
+          CLIENT_ID="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-output/PersonalAgent-Client-debug.apk | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -1)"
+          ADMIN_ID="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-output/PersonalAgent-Admin-debug.apk | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -1)"
           test -n "$CLIENT_ID"
           test -n "$ADMIN_ID"
           test "$CLIENT_ID" != "$ADMIN_ID"

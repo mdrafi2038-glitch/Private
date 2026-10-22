@@ -1,0 +1,132 @@
+name: Build Personal Agent APKs from uploaded ZIP
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-apks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - name: Checkout uploaded ZIP repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Extract the exact uploaded archive and inner source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="$(find . -maxdepth 1 -type f -name '*.zip' -print -quit)"
+          test -n "$ARCHIVE"
+          mkdir -p outer extracted
+          unzip -q "$ARCHIVE" -d outer
+          INNER="$(find outer -type f -name 'private-agent.zip' -print -quit)"
+          test -n "$INNER"
+          unzip -q "$INNER" -d extracted
+          PROJECT_DIR="$(find extracted -type f -name settings.gradle -print -quit | xargs -r dirname)"
+          if [ -z "$PROJECT_DIR" ]; then
+            PROJECT_DIR="$(find extracted -type f -name settings.gradle.kts -print -quit | xargs -r dirname)"
+          fi
+          test -n "$PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "PROJECT_DIR=$PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
+
+      - name: Split Client and Admin variants using the ZIP's build script
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCRIPT="$(find outer -type f -name customize_split_apps.py -print -quit)"
+          test -n "$SCRIPT"
+          python3 "$SCRIPT" "$PROJECT_DIR"
+
+      - name: Prepare debug signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$GITHUB_WORKSPACE/extracted/debug.keystore"
+          if [ ! -f "$KEYSTORE" ]; then
+            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          test -s "$KEYSTORE"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Build separate debug APKs
+        shell: bash
+        run: gradle -p "$PROJECT_DIR" assembleClientDebug assembleAdminDebug --stacktrace
+
+      - name: Verify and collect APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-output
+          find "$PROJECT_DIR" -type f -path '*/build/outputs/apk/*/*.apk' -print
+          CLIENT_APK="$(find "$PROJECT_DIR" -type f -path '*/build/outputs/apk/*/*.apk' | grep -i '/client/' | head -1 || true)"
+          ADMIN_APK="$(find "$PROJECT_DIR" -type f -path '*/build/outputs/apk/*/*.apk' | grep -i '/admin/' | head -1 || true)"
+          test -n "$CLIENT_APK"
+          test -n "$ADMIN_APK"
+          cp "$CLIENT_APK" release-output/PersonalAgent-Client-debug.apk
+          cp "$ADMIN_APK" release-output/PersonalAgent-Admin-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release-output/PersonalAgent-Client-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release-output/PersonalAgent-Admin-debug.apk
+          CLIENT_ID="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release-output/PersonalAgent-Client-debug.apk | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -1)"
+          ADMIN_ID="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release-output/PersonalAgent-Admin-debug.apk | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -1)"
+          test -n "$CLIENT_ID"
+          test -n "$ADMIN_ID"
+          test "$CLIENT_ID" != "$ADMIN_ID"
+          echo "Client package: $CLIENT_ID"
+          echo "Admin package: $ADMIN_ID"
+          (cd "$PROJECT_DIR" && zip -qr "$GITHUB_WORKSPACE/release-output/PersonalAgent-Updated-Source.zip" . -x '*/build/*' '*/.gradle/*' '.gradle/*' '*/.idea/*')
+          (cd release-output && sha256sum PersonalAgent-Client-debug.apk PersonalAgent-Admin-debug.apk PersonalAgent-Updated-Source.zip > SHA256SUMS.txt)
+          ls -lh release-output/*
+
+      - name: Upload Client APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAgent-Client-APK
+          path: release-output/PersonalAgent-Client-debug.apk
+          retention-days: 14
+
+      - name: Upload Admin APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAgent-Admin-APK
+          path: release-output/PersonalAgent-Admin-debug.apk
+          retention-days: 14
+
+      - name: Upload updated source and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAgent-Build-Source-and-Checksums
+          path: |
+            release-output/PersonalAgent-Updated-Source.zip
+            release-output/SHA256SUMS.txt
+          retention-days: 14

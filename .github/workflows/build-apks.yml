@@ -85,6 +85,7 @@ jobs:
         run: |
           sed -n '80,105p' "$PROJECT_DIR/app/src/main/java/com/example/manager/AgentCommandHandler.kt" || true
           sed -n '290,310p' "$PROJECT_DIR/app/src/main/java/com/example/service/AgentService.kt" || true
+          sed -n '1,240p' "$PROJECT_DIR/app/src/main/java/com/example/manager/DevicePolicyHelper.kt" || true
 
       - name: Build separate debug APKs
         shell: bash

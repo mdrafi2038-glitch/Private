@@ -84,6 +84,18 @@ jobs:
               p.write_text(s)
           print("DevicePolicyHelper status aliases verified")
           PY
+          python3 - "$PROJECT_DIR/app/build.gradle.kts" <<'PY'
+          from pathlib import Path
+          import re, sys
+          p = Path(sys.argv[1])
+          s = p.read_text()
+          s2 = re.sub(r'(?m)(\\bcompileSdk\\s*=\\s*)35\\b', r'\\g<1>36', s)
+          s2 = re.sub(r'(?m)(\\bcompileSdkVersion\\s*\\(?\\s*)35(\\s*\\)?)', r'\\g<1>36\\g<2>', s2)
+          if s2 == s and not re.search(r'compileSdk\\s*=\\s*36|compileSdkVersion\\s*\\(?\\s*36', s):
+              raise SystemExit("Could not update app compileSdk to 36; inspect app/build.gradle.kts")
+          p.write_text(s2)
+          print("compileSdk 36 configured for AndroidX Core 1.18.0")
+          PY
 
       - name: Prepare debug signing key
         shell: bash
